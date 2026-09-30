@@ -1,4 +1,6 @@
-"""HelloAgents智能旅行助手 - 后端应用"""
+"""小星探行 - 后端应用"""
+
+__version__ = "1.1.0"
 
 # ============ 兼容性补丁 ============
 # fastmcp 2.14.7 从 mcp.server.auth.provider 导入 IdentityAssertionParams,
@@ -14,6 +16,4 @@ try:
 except Exception:
     pass
 # ============ 补丁结束 ============
-
-__version__ = "1.0.0"
 

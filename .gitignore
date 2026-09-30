@@ -1,0 +1,29 @@
+# 依赖与构建产物
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+
+# 环境变量
+.env
+.env.local
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 临时文件与本地诊断记录
+.e2e-*.json
+.e2e-*.txt
+.dev-plan*.json
+.shot-*.png
+.dev-server.ps1
+.acl-recovery/
+.qa/
+.verify-plan*.json
+
+# 本地验证脚本(不属于交付内容)
+backend/_dev_*.py
+backend/_selftest_*.py

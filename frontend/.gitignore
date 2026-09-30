@@ -28,3 +28,7 @@ dist-ssr
 .env.local
 .env.*.local
 
+# 本地调试页(用于自动化截图与端到端验证)
+.debug-*.html
+.dev-plan.json
+

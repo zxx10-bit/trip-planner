@@ -1,35 +1,31 @@
 <template>
-  <div class="result-container">
-    <!-- 页面头部 -->
+  <div class="result-page">
+    <!-- 顶部操作栏 -->
     <div class="page-header">
-      <a-button class="back-button" size="large" @click="goBack">
-        ← 返回首页
-      </a-button>
-      <a-space size="middle">
-        <a-button v-if="!editMode" @click="toggleEditMode" type="default">
-          ✏️ 编辑行程
-        </a-button>
-        <a-button v-else @click="saveChanges" type="primary">
-          💾 保存修改
-        </a-button>
-        <a-button v-if="editMode" @click="cancelEdit" type="default">
-          ❌ 取消编辑
-        </a-button>
+      <a-button class="back-button" size="large" @click="goBack">← 返回首页</a-button>
 
-        <!-- 导出按钮 -->
+      <div class="header-plan" v-if="tripPlan">
+        <span class="plan-city">🧭 {{ tripPlan.city }}</span>
+        <span class="plan-dates">{{ tripPlan.start_date }} → {{ tripPlan.end_date }}</span>
+        <span class="plan-days">{{ tripPlan.days.length }} 天完整攻略</span>
+      </div>
+
+      <a-space size="middle" :wrap="true">
+        <a-button v-if="!editMode" @click="toggleEditMode">✏️ 编辑行程</a-button>
+        <template v-else>
+          <a-button @click="saveChanges" type="primary">💾 保存修改</a-button>
+          <a-button @click="cancelEdit">❌ 取消编辑</a-button>
+        </template>
+
         <a-dropdown v-if="!editMode">
           <template #overlay>
             <a-menu>
-              <a-menu-item key="image" @click="exportAsImage">
-                📷 导出为图片
-              </a-menu-item>
-              <a-menu-item key="pdf" @click="exportAsPDF">
-                📄 导出为PDF
-              </a-menu-item>
+              <a-menu-item key="image" @click="exportAsImage">📷 导出为图片</a-menu-item>
+              <a-menu-item key="pdf" @click="exportAsPDF">📄 导出为PDF</a-menu-item>
             </a-menu>
           </template>
-          <a-button type="default">
-            📥 导出行程 <DownOutlined />
+          <a-button>
+            📥 导出攻略 <DownOutlined />
           </a-button>
         </a-dropdown>
       </a-space>
@@ -37,67 +33,102 @@
 
     <div v-if="tripPlan" class="content-wrapper">
       <!-- 侧边导航 -->
-      <div class="side-nav">
-        <a-affix :offset-top="80">
-          <a-menu mode="inline" :selected-keys="[activeSection]" @click="scrollToSection">
-            <a-menu-item key="overview">
-              <span>📋 行程概览</span>
-            </a-menu-item>
-            <a-menu-item key="budget" v-if="tripPlan.budget">
-              <span>💰 预算明细</span>
-            </a-menu-item>
-            <a-menu-item key="map">
-              <span>📍 景点地图</span>
-            </a-menu-item>
-            <a-sub-menu key="days" title="📅 每日行程">
-              <a-menu-item v-for="(day, index) in tripPlan.days" :key="`day-${index}`">
-                第{{ day.day_index + 1 }}天
+      <aside class="side-nav">
+        <a-affix :offset-top="88">
+          <div class="nav-card">
+            <div class="nav-title">攻略目录</div>
+            <a-menu mode="inline" :selected-keys="[activeSection]" @click="scrollToSection">
+              <a-menu-item key="overview"><span>📋 行程概览</span></a-menu-item>
+              <a-menu-item key="budget" v-if="tripPlan.budget"><span>💰 预算明细</span></a-menu-item>
+              <a-menu-item key="map"><span>📍 景点地图</span></a-menu-item>
+              <a-sub-menu key="days" title="🛰️ 每日时刻表">
+                <a-menu-item v-for="(day, index) in tripPlan.days" :key="`day-${index}`">
+                  第{{ day.day_index + 1 }}天 · {{ day.start_time || '—' }}起
+                </a-menu-item>
+              </a-sub-menu>
+              <a-menu-item
+                key="weather"
+                v-if="tripPlan.weather_info && tripPlan.weather_info.length"
+              >
+                <span>🌤️ 天气提示</span>
               </a-menu-item>
-            </a-sub-menu>
-            <a-menu-item key="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0">
-              <span>🌤️ 天气信息</span>
-            </a-menu-item>
-          </a-menu>
+            </a-menu>
+            <button type="button" class="nav-assistant" @click="openAssistant">
+              <span class="nav-assistant-icon">🤖</span>
+              让小星小探员帮我改
+            </button>
+          </div>
         </a-affix>
-      </div>
+      </aside>
 
-      <!-- 主内容区 -->
-      <div class="main-content">
-        <!-- 顶部信息区:左侧概览+预算,右侧地图 -->
+      <!-- 主内容 -->
+      <main class="main-content">
+        <!-- 概览 + 地图 -->
         <div class="top-info-section">
-          <!-- 左侧:行程概览和预算明细 -->
           <div class="left-info">
-            <!-- 行程概览 -->
-            <a-card id="overview" :title="`${tripPlan.city}旅行计划`" :bordered="false" class="overview-card">
+            <a-card id="overview" :bordered="false" class="overview-card">
+              <template #title>
+                <span class="card-title">📋 行程概览</span>
+              </template>
+              <div class="stat-strip">
+                <div class="stat">
+                  <div class="stat-value">{{ tripPlan.days.length }}</div>
+                  <div class="stat-label">旅行天数</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value">{{ travelers }}</div>
+                  <div class="stat-label">出行人数</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value">{{ totalAttractions }}</div>
+                  <div class="stat-label">景点数量</div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value">{{ totalCommuteText }}</div>
+                  <div class="stat-label">总通勤时长</div>
+                </div>
+              </div>
+
               <div class="overview-content">
                 <div class="info-item">
-                  <span class="info-label">📅 日期:</span>
+                  <span class="info-label">📅 日期</span>
                   <span class="info-value">{{ tripPlan.start_date }} 至 {{ tripPlan.end_date }}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">💡 建议:</span>
+                  <span class="info-label">🛬 抵达时刻</span>
+                  <span class="info-value">{{ arrivalTime }} 起排布时刻表</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">🚏 交通偏好</span>
+                  <span class="info-value">{{ transportPrefsText }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">💡 出行建议</span>
                   <span class="info-value">{{ tripPlan.overall_suggestions }}</span>
                 </div>
               </div>
             </a-card>
 
-            <!-- 预算明细 -->
-            <a-card id="budget" v-if="tripPlan.budget" title="💰 预算明细" :bordered="false" class="budget-card">
+            <a-card v-if="tripPlan.budget" id="budget" :bordered="false" class="budget-card">
+              <template #title>
+                <span class="card-title">💰 预算明细</span>
+                <span class="card-title-sub">按 {{ travelers }} 人预估</span>
+              </template>
               <div class="budget-grid">
                 <div class="budget-item">
-                  <div class="budget-label">景点门票</div>
+                  <div class="budget-label">🎫 景点门票</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_attractions }}</div>
                 </div>
                 <div class="budget-item">
-                  <div class="budget-label">酒店住宿</div>
+                  <div class="budget-label">🏨 酒店住宿</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_hotels }}</div>
                 </div>
                 <div class="budget-item">
-                  <div class="budget-label">餐饮费用</div>
+                  <div class="budget-label">🍜 餐饮费用</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_meals }}</div>
                 </div>
                 <div class="budget-item">
-                  <div class="budget-label">交通费用</div>
+                  <div class="budget-label">🚇 交通费用</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_transportation }}</div>
                 </div>
               </div>
@@ -105,217 +136,119 @@
                 <span class="total-label">预估总费用</span>
                 <span class="total-value">¥{{ tripPlan.budget.total }}</span>
               </div>
+              <div class="budget-foot">人均约 ¥{{ perPersonCost }}</div>
             </a-card>
           </div>
 
-          <!-- 右侧:地图 -->
           <div class="right-map">
-            <a-card id="map" title="📍 景点地图" :bordered="false" class="map-card">
+            <a-card id="map" :bordered="false" class="map-card">
+              <template #title><span class="card-title">📍 景点地图</span></template>
               <div id="amap-container" style="width: 100%; height: 100%"></div>
             </a-card>
           </div>
         </div>
 
-        <!-- 每日行程:可折叠 -->
-        <a-card title="📅 每日行程" :bordered="false" class="days-card">
+        <!-- 每日时刻表 -->
+        <a-card :bordered="false" class="days-card">
+          <template #title>
+            <span class="card-title">🛰️ 每日精细时刻表</span>
+            <span class="card-title-sub">到达 / 离开 / 下一站 · 通勤自动计算</span>
+          </template>
+
           <a-collapse v-model:activeKey="activeDays" accordion>
-            <a-collapse-panel
-              v-for="(day, index) in tripPlan.days"
-              :key="index"
-              :id="`day-${index}`"
-            >
+            <a-collapse-panel v-for="(day, index) in tripPlan.days" :key="index" :id="`day-${index}`">
               <template #header>
                 <div class="day-header">
-                  <span class="day-title">第{{ day.day_index + 1 }}天</span>
-                  <span class="day-date">{{ day.date }}</span>
+                  <div class="day-header-left">
+                    <span class="day-chip">D{{ day.day_index + 1 }}</span>
+                    <span class="day-title">{{ day.date }}</span>
+                    <span class="day-time">
+                      {{ day.start_time || '—' }}
+                      <template v-if="day.end_time"> → {{ day.end_time }}</template>
+                    </span>
+                  </div>
+                  <div class="day-header-right">
+                    <span class="day-meta">📍 {{ day.attractions?.length || 0 }} 个景点</span>
+                    <span class="day-meta">🚇 {{ dayCommute(day) }}</span>
+                  </div>
                 </div>
               </template>
 
-              <!-- 行程基本信息 -->
-              <div class="day-info">
-                <div class="info-row">
-                  <span class="label">📝 行程描述:</span>
-                  <span class="value">{{ day.description }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">🚗 交通方式:</span>
-                  <span class="value">{{ day.transportation }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">🏨 住宿:</span>
-                  <span class="value">{{ day.accommodation }}</span>
-                </div>
-              </div>
+              <div v-if="day.description" class="day-desc">📝 {{ day.description }}</div>
 
-              <!-- 景点安排 -->
-              <a-divider orientation="left">🎯 景点安排</a-divider>
-              <a-list
-                :data-source="day.attractions"
-                :grid="{ gutter: 16, column: 2 }"
-              >
-                <template #renderItem="{ item, index }">
-                  <a-list-item>
-                    <a-card :title="item.name" size="small" class="attraction-card">
-                      <!-- 编辑模式下的操作按钮 -->
-                      <template #extra v-if="editMode">
-                        <a-space>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'up')"
-                            :disabled="index === 0"
-                          >
-                            ↑
-                          </a-button>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'down')"
-                            :disabled="index === day.attractions.length - 1"
-                          >
-                            ↓
-                          </a-button>
-                          <a-button
-                            size="small"
-                            danger
-                            @click="deleteAttraction(day.day_index, index)"
-                          >
-                            🗑️
-                          </a-button>
-                        </a-space>
-                      </template>
-
-                      <!-- 景点图片 -->
-                      <div class="attraction-image-wrapper">
-                        <img
-                          :src="getAttractionImage(item.name, index)"
-                          :alt="item.name"
-                          class="attraction-image"
-                          @error="handleImageError"
-                        />
-                        <div class="attraction-badge">
-                          <span class="badge-number">{{ index + 1 }}</span>
-                        </div>
-                        <div v-if="item.ticket_price" class="price-tag">
-                          ¥{{ item.ticket_price }}
-                        </div>
-                      </div>
-
-                      <!-- 编辑模式下可编辑的字段 -->
-                      <div v-if="editMode">
-                        <p><strong>地址:</strong></p>
-                        <a-input v-model:value="item.address" size="small" style="margin-bottom: 8px" />
-
-                        <p><strong>游览时长(分钟):</strong></p>
-                        <a-input-number v-model:value="item.visit_duration" :min="10" :max="480" size="small" style="width: 100%; margin-bottom: 8px" />
-
-                        <p><strong>描述:</strong></p>
-                        <a-textarea v-model:value="item.description" :rows="2" size="small" style="margin-bottom: 8px" />
-                      </div>
-
-                      <!-- 查看模式 -->
-                      <div v-else>
-                        <p><strong>地址:</strong> {{ item.address }}</p>
-                        <p><strong>游览时长:</strong> {{ item.visit_duration }}分钟</p>
-                        <p><strong>描述:</strong> {{ item.description }}</p>
-                        <p v-if="item.rating"><strong>评分:</strong> {{ item.rating }}⭐</p>
-                      </div>
-                    </a-card>
-                  </a-list-item>
-                </template>
-              </a-list>
-
-              <!-- 酒店推荐 -->
-              <a-divider v-if="day.hotel" orientation="left">🏨 住宿推荐</a-divider>
-              <a-card v-if="day.hotel" size="small" class="hotel-card">
-                <template #title>
-                  <span class="hotel-title">{{ day.hotel.name }}</span>
-                </template>
-                <a-descriptions :column="2" size="small">
-                  <a-descriptions-item label="地址">{{ day.hotel.address }}</a-descriptions-item>
-                  <a-descriptions-item label="类型">{{ day.hotel.type }}</a-descriptions-item>
-                  <a-descriptions-item label="价格范围">{{ day.hotel.price_range }}</a-descriptions-item>
-                  <a-descriptions-item label="评分">{{ day.hotel.rating }}⭐</a-descriptions-item>
-                  <a-descriptions-item label="距离" :span="2">{{ day.hotel.distance }}</a-descriptions-item>
-                </a-descriptions>
-              </a-card>
-
-              <!-- 餐饮安排 -->
-              <a-divider orientation="left">🍽️ 餐饮安排</a-divider>
-              <a-descriptions :column="1" bordered size="small">
-                <a-descriptions-item
-                  v-for="meal in day.meals"
-                  :key="meal.type"
-                  :label="getMealLabel(meal.type)"
-                >
-                  {{ meal.name }}
-                  <span v-if="meal.description"> - {{ meal.description }}</span>
-                </a-descriptions-item>
-              </a-descriptions>
+              <DayTimeline
+                :day="day"
+                :edit-mode="editMode"
+                :travelers="travelers"
+                :image-resolver="resolveAttractionImage"
+                @move="(i, dir) => moveTimelineEntry(day, i, dir)"
+                @remove="(i) => removeTimelineEntry(day, i)"
+              />
             </a-collapse-panel>
           </a-collapse>
         </a-card>
 
-        <a-card id="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0" title="天气信息" style="margin-top: 20px" :bordered="false">
-        <a-list
-          :data-source="tripPlan.weather_info"
-          :grid="{ gutter: 16, column: 3 }"
+        <!-- 天气 -->
+        <a-card
+          id="weather"
+          v-if="tripPlan.weather_info && tripPlan.weather_info.length"
+          :bordered="false"
+          class="weather-section"
         >
-          <template #renderItem="{ item }">
-            <a-list-item>
-              <a-card size="small" class="weather-card">
-                <div class="weather-date">{{ item.date }}</div>
-                <div class="weather-info-row">
-                  <span class="weather-icon">☀️</span>
-                  <div>
-                    <div class="weather-label">白天</div>
-                    <div class="weather-value">{{ item.day_weather }} {{ item.day_temp }}°C</div>
+          <template #title><span class="card-title">🌤️ 天气提示</span></template>
+          <a-list :data-source="tripPlan.weather_info" :grid="{ gutter: 16, column: 3 }">
+            <template #renderItem="{ item }">
+              <a-list-item>
+                <a-card size="small" class="weather-card" :bordered="false">
+                  <div class="weather-date">{{ item.date }}</div>
+                  <div class="weather-info-row">
+                    <span class="weather-icon">☀️</span>
+                    <div>
+                      <div class="weather-label">白天</div>
+                      <div class="weather-value">{{ item.day_weather }} {{ item.day_temp }}°C</div>
+                    </div>
                   </div>
-                </div>
-                <div class="weather-info-row">
-                  <span class="weather-icon">🌙</span>
-                  <div>
-                    <div class="weather-label">夜间</div>
-                    <div class="weather-value">{{ item.night_weather }} {{ item.night_temp }}°C</div>
+                  <div class="weather-info-row">
+                    <span class="weather-icon">🌙</span>
+                    <div>
+                      <div class="weather-label">夜间</div>
+                      <div class="weather-value">{{ item.night_weather }} {{ item.night_temp }}°C</div>
+                    </div>
                   </div>
-                </div>
-                <div class="weather-wind">
-                  💨 {{ item.wind_direction }} {{ item.wind_power }}
-                </div>
-              </a-card>
-            </a-list-item>
-          </template>
-        </a-list>
+                  <div class="weather-wind">💨 {{ item.wind_direction }} {{ item.wind_power }}</div>
+                </a-card>
+              </a-list-item>
+            </template>
+          </a-list>
         </a-card>
-      </div>
+      </main>
     </div>
 
     <a-empty v-else description="没有找到旅行计划数据">
-      <template #image>
-        <div style="font-size: 80px;">🗺️</div>
-      </template>
+      <template #image><div style="font-size: 80px">🗺️</div></template>
       <template #description>
-        <span style="color: #999;">暂无旅行计划数据,请先创建行程</span>
+        <span style="color: #999">暂无攻略数据,请先生成行程</span>
       </template>
-      <a-button type="primary" @click="goBack">返回首页创建行程</a-button>
+      <a-button type="primary" @click="goBack">返回首页生成攻略</a-button>
     </a-empty>
 
-    <!-- 回到顶部按钮 -->
     <a-back-top :visibility-height="300">
-      <div class="back-top-button">
-        ↑
-      </div>
+      <div class="back-top-button">↑</div>
     </a-back-top>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { DownOutlined } from '@ant-design/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import type { TripPlan } from '@/types'
+import DayTimeline from '@/components/DayTimeline.vue'
+import { openAssistant as showAssistant } from '@/services/assistant'
+import type { DayPlan, TripPlan, TimelineEntry } from '@/types'
 import apiClient from '@/services/api'
 
 const router = useRouter()
@@ -324,165 +257,223 @@ const editMode = ref(false)
 const originalPlan = ref<TripPlan | null>(null)
 const attractionPhotos = ref<Record<string, string>>({})
 const activeSection = ref('overview')
-const activeDays = ref<number[]>([0]) // 默认展开第一天
+const activeDays = ref<number[]>([0])
 let map: any = null
+
+/** 表单上下文(人数 / 交通偏好 / 抵达时刻),用于展示与助手对话 */
+const formContext = ref<any>({})
 
 onMounted(async () => {
   const data = sessionStorage.getItem('tripPlan')
+  const form = sessionStorage.getItem('tripForm')
+  if (form) {
+    try {
+      formContext.value = JSON.parse(form)
+    } catch {
+      formContext.value = {}
+    }
+  }
   if (data) {
     tripPlan.value = JSON.parse(data)
-    // 加载景点图片
     await loadAttractionPhotos()
-    // 等待DOM渲染完成后初始化地图
     await nextTick()
     initMap()
   }
+  window.addEventListener('xx:trip-plan-updated', onPlanUpdatedByAgent)
 })
 
-const goBack = () => {
-  router.push('/')
+onUnmounted(() => {
+  window.removeEventListener('xx:trip-plan-updated', onPlanUpdatedByAgent)
+})
+
+/** 小星小探员改完行程后,实时刷新当前页面 */
+const onPlanUpdatedByAgent = async (event: Event) => {
+  const detail = (event as CustomEvent).detail as TripPlan | undefined
+  const raw = detail ?? (sessionStorage.getItem('tripPlan') ? JSON.parse(sessionStorage.getItem('tripPlan')!) : null)
+  if (!raw) return
+
+  tripPlan.value = raw
+  editMode.value = false
+  originalPlan.value = null
+  await loadAttractionPhotos()
+  if (map) {
+    map.destroy()
+    map = null
+  }
+  await nextTick()
+  initMap()
 }
 
-// 滚动到指定区域
+// ============ 统计 ============
+
+const travelers = computed(() => {
+  const fromPlan = tripPlan.value?.days?.[0]?.timeline?.find((e) => e.venue?.party_size)
+    ?.venue?.party_size
+  return formContext.value?.travelers || fromPlan || 2
+})
+
+const arrivalTime = computed(
+  () =>
+    formContext.value?.arrival_time ||
+    tripPlan.value?.days?.[0]?.timeline?.find((e) => e.type === 'arrival')?.arrive_time ||
+    tripPlan.value?.days?.[0]?.start_time ||
+    '09:00'
+)
+
+const transportPrefsText = computed(() => {
+  const prefs: string[] = formContext.value?.transport_preferences || []
+  return prefs.length ? prefs.join(' / ') : '按最优方案推荐'
+})
+
+const totalAttractions = computed(
+  () => tripPlan.value?.days.reduce((sum, day) => sum + (day.attractions?.length || 0), 0) ?? 0
+)
+
+const totalCommuteMinutes = computed(() => {
+  let total = 0
+  tripPlan.value?.days.forEach((day) => {
+    day.timeline?.forEach((entry) => {
+      total += entry.next_transport?.duration_min ?? 0
+    })
+  })
+  return total
+})
+
+const totalCommuteText = computed(() => {
+  const total = totalCommuteMinutes.value
+  if (!total) return '—'
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return h > 0 ? `${h}h${m}m` : `${m}m`
+})
+
+const perPersonCost = computed(() => {
+  const total = tripPlan.value?.budget?.total ?? 0
+  return travelers.value ? Math.round(total / travelers.value) : total
+})
+
+const dayCommute = (day: DayPlan) => {
+  const total = (day.timeline ?? []).reduce(
+    (sum, entry) => sum + (entry.next_transport?.duration_min ?? 0),
+    0
+  )
+  return total ? `${total} 分钟` : '—'
+}
+
+// ============ 交互 ============
+
+const goBack = () => router.push('/')
+
+const openAssistant = () => {
+  showAssistant()
+}
+
 const scrollToSection = ({ key }: { key: string }) => {
   activeSection.value = key
   const element = document.getElementById(key)
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-// 切换编辑模式
 const toggleEditMode = () => {
   editMode.value = true
-  // 保存原始数据用于取消编辑
   originalPlan.value = JSON.parse(JSON.stringify(tripPlan.value))
-  message.info('进入编辑模式')
+  message.info('进入编辑模式:保存后会自动重算时刻表')
 }
 
-// 保存修改
-const saveChanges = () => {
+const saveChanges = async () => {
+  if (!tripPlan.value) return
   editMode.value = false
-  // 更新sessionStorage
-  if (tripPlan.value) {
-    sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
-  }
+  sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
   message.success('修改已保存')
 
-  // 重新初始化地图以反映更改
-  if (map) {
-    map.destroy()
-  }
-  nextTick(() => {
-    initMap()
-  })
+  if (map) map.destroy()
+  await nextTick()
+  initMap()
 }
 
-// 取消编辑
 const cancelEdit = () => {
-  if (originalPlan.value) {
-    tripPlan.value = JSON.parse(JSON.stringify(originalPlan.value))
-  }
+  if (originalPlan.value) tripPlan.value = JSON.parse(JSON.stringify(originalPlan.value))
   editMode.value = false
   message.info('已取消编辑')
 }
 
-// 删除景点
-const deleteAttraction = (dayIndex: number, attrIndex: number) => {
-  if (!tripPlan.value) return
-
-  const day = tripPlan.value.days[dayIndex]
-  if (day.attractions.length <= 1) {
-    message.warning('每天至少需要保留一个景点')
+/** 时刻表条目上移 / 下移(同步调整当日景点顺序) */
+const moveTimelineEntry = (day: DayPlan, index: number, direction: 'up' | 'down') => {
+  const timeline = day.timeline ?? []
+  const target = direction === 'up' ? index - 1 : index + 1
+  if (target < 0 || target >= timeline.length) return
+  if (timeline[index].type !== 'attraction' || timeline[target].type !== 'attraction') {
+    message.info('只能调整相邻景点之间的顺序')
     return
   }
 
-  day.attractions.splice(attrIndex, 1)
-  message.success('景点已删除')
+  const attractions = day.attractions ?? []
+  const from = attractions.findIndex((a) => a.name === timeline[index].title)
+  const to = attractions.findIndex((a) => a.name === timeline[target].title)
+  if (from === -1 || to === -1) return
+
+  ;[attractions[from], attractions[to]] = [attractions[to], attractions[from]]
+  ;[timeline[index], timeline[target]] = [timeline[target], timeline[index]]
+  timeline.forEach((entry, i) => (entry.seq = i))
 }
 
-// 移动景点顺序
-const moveAttraction = (dayIndex: number, attrIndex: number, direction: 'up' | 'down') => {
-  if (!tripPlan.value) return
-
-  const day = tripPlan.value.days[dayIndex]
-  const attractions = day.attractions
-
-  if (direction === 'up' && attrIndex > 0) {
-    [attractions[attrIndex], attractions[attrIndex - 1]] = [attractions[attrIndex - 1], attractions[attrIndex]]
-  } else if (direction === 'down' && attrIndex < attractions.length - 1) {
-    [attractions[attrIndex], attractions[attrIndex + 1]] = [attractions[attrIndex + 1], attractions[attrIndex]]
+const removeTimelineEntry = (day: DayPlan, index: number) => {
+  const entry = (day.timeline ?? [])[index]
+  if (!entry || entry.type !== 'attraction') return
+  if ((day.attractions?.length ?? 0) <= 1) {
+    message.warning('每天至少需要保留一个景点')
+    return
   }
+  day.timeline?.splice(index, 1)
+  const attrIndex = (day.attractions ?? []).findIndex((a) => a.name === entry.title)
+  if (attrIndex !== -1) day.attractions.splice(attrIndex, 1)
+  message.success('已移除该景点,保存后自动重算时刻与通勤')
 }
 
-const getMealLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    breakfast: '早餐',
-    lunch: '午餐',
-    dinner: '晚餐',
-    snack: '小吃'
-  }
-  return labels[type] || type
-}
+// ============ 图片 ============
 
-// 加载所有景点图片
 const loadAttractionPhotos = async () => {
   if (!tripPlan.value) return
-
   const promises: Promise<void>[] = []
 
-  tripPlan.value.days.forEach(day => {
-    day.attractions.forEach(attraction => {
-      const promise = apiClient
-        .get('/api/poi/photo', {
-          params: {
-            name: attraction.name,
-            city: tripPlan.value!.city
-          }
-        })
-        .then(response => {
-          const data = response.data
-          if (data.success && data.data.photo_url) {
-            attractionPhotos.value[attraction.name] = data.data.photo_url
-          }
-        })
-        .catch(err => {
-          console.error(`获取${attraction.name}图片失败:`, err)
-        })
-
-      promises.push(promise)
+  tripPlan.value.days.forEach((day) => {
+    day.attractions?.forEach((attraction) => {
+      promises.push(
+        apiClient
+          .get('/api/poi/photo', {
+            params: { name: attraction.name, city: tripPlan.value!.city }
+          })
+          .then((response) => {
+            const data = response.data
+            if (data.success && data.data.photo_url) {
+              attractionPhotos.value[attraction.name] = data.data.photo_url
+            }
+          })
+          .catch((err) => console.error(`获取${attraction.name}图片失败:`, err))
+      )
     })
   })
 
   await Promise.all(promises)
 }
 
-// 获取景点图片
-const getAttractionImage = (name: string, index: number): string => {
-  // 如果已加载真实图片,返回真实图片
-  if (attractionPhotos.value[name]) {
-    return attractionPhotos.value[name]
-  }
+const getAttractionImage = (name: string, index = 0): string => {
+  if (attractionPhotos.value[name]) return attractionPhotos.value[name]
 
-  // 返回一个纯色占位图(避免跨域问题)
   const colors = [
-    { start: '#667eea', end: '#764ba2' },
-    { start: '#f093fb', end: '#f5576c' },
+    { start: '#6d5efc', end: '#a06bf0' },
+    { start: '#ff9a62', end: '#ff6f91' },
     { start: '#4facfe', end: '#00f2fe' },
     { start: '#43e97b', end: '#38f9d7' },
     { start: '#fa709a', end: '#fee140' }
   ]
-  const colorIndex = index % colors.length
-  const { start, end } = colors[colorIndex]
+  const { start, end } = colors[index % colors.length]
 
-  // 使用base64编码避免中文问题
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
-    <defs>
-      <linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:${start};stop-opacity:1" />
-        <stop offset="100%" style="stop-color:${end};stop-opacity:1" />
-      </linearGradient>
-    </defs>
+    <defs><linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:${start};stop-opacity:1" />
+      <stop offset="100%" style="stop-color:${end};stop-opacity:1" />
+    </linearGradient></defs>
     <rect width="400" height="300" fill="url(#grad${index})"/>
     <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" fill="white">${name}</text>
   </svg>`
@@ -490,11 +481,12 @@ const getAttractionImage = (name: string, index: number): string => {
   return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
 }
 
-// 图片加载失败时的处理
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  // 使用灰色占位图
-  img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect width="400" height="300" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
+/** 稳定的图片索引:按景点名在整份攻略中的出现顺序 */
+const imageIndexCache = new Map<string, number>()
+let imageIndexSeq = 0
+const resolveAttractionImage = (name: string): string => {
+  if (!imageIndexCache.has(name)) imageIndexCache.set(name, imageIndexSeq++)
+  return getAttractionImage(name, imageIndexCache.get(name) ?? 0)
 }
 
 async function replaceImagesWithBase64(container: HTMLElement) {
@@ -503,60 +495,57 @@ async function replaceImagesWithBase64(container: HTMLElement) {
   imgs.forEach((img) => {
     const src = img.getAttribute('src') || ''
     if (!src.startsWith('http')) return
-    tasks.push(new Promise((resolve) => {
-      fetch(`/api/poi/image-proxy?url=${encodeURIComponent(src)}`)
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.success && d.url) {
-            img.onload = () => resolve()
-            img.src = d.url
-          } else resolve()
-        })
-        .catch(() => resolve())
-    }))
+    tasks.push(
+      new Promise((resolve) => {
+        fetch(`${apiClient.defaults.baseURL}/api/poi/image-proxy?url=${encodeURIComponent(src)}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.url) {
+              img.onload = () => resolve()
+              img.src = d.url
+            } else resolve()
+          })
+          .catch(() => resolve())
+      })
+    )
   })
   await Promise.all(tasks)
 }
 
-// 导出为图片
+const buildExportContainer = async () => {
+  const element = document.querySelector('.main-content') as HTMLElement
+  if (!element) throw new Error('未找到内容元素')
+
+  const exportContainer = document.createElement('div')
+  exportContainer.style.width = element.offsetWidth + 'px'
+  exportContainer.style.backgroundColor = '#f7f8fd'
+  exportContainer.style.padding = '20px'
+  exportContainer.innerHTML = element.innerHTML
+
+  const mapContainer = document.getElementById('amap-container')
+  if (mapContainer && map) {
+    const mapCanvas = mapContainer.querySelector('canvas')
+    if (mapCanvas) {
+      const snapshot = mapCanvas.toDataURL('image/png')
+      const exportMap = exportContainer.querySelector('#amap-container')
+      if (exportMap) {
+        exportMap.innerHTML = `<img src="${snapshot}" style="width:100%;height:100%;object-fit:cover;" />`
+      }
+    }
+  }
+
+  await replaceImagesWithBase64(exportContainer)
+  return exportContainer
+}
+
 const exportAsImage = async () => {
   try {
     message.loading({ content: '正在生成图片...', key: 'export', duration: 0 })
+    const exportContainer = await buildExportContainer()
 
-    const element = document.querySelector('.main-content') as HTMLElement
-    if (!element) {
-      throw new Error('未找到内容元素')
-    }
-
-    // 创建一个独立的容器
-    const exportContainer = document.createElement('div')
-    exportContainer.style.width = element.offsetWidth + 'px'
-    exportContainer.style.backgroundColor = '#f5f7fa'
-    exportContainer.style.padding = '20px'
-
-    // 复制所有内容
-    exportContainer.innerHTML = element.innerHTML
-
-    // 处理地图截图
-    const mapContainer = document.getElementById('amap-container')
-    if (mapContainer && map) {
-      const mapCanvas = mapContainer.querySelector('canvas')
-      if (mapCanvas) {
-        const mapSnapshot = mapCanvas.toDataURL('image/png')
-        const exportMapContainer = exportContainer.querySelector('#amap-container')
-        if (exportMapContainer) {
-          exportMapContainer.innerHTML = `<img src="${mapSnapshot}" style="width:100%;height:100%;object-fit:cover;" />`
-        }
-      }
-    }
-
-    // 把跨域景点图片转成base64,否则html2canvas会因为canvas tainted而截不到
-    await replaceImagesWithBase64(exportContainer)
-
-    // html2canvas 截图
     document.body.appendChild(exportContainer)
     const canvas = await html2canvas(exportContainer, {
-      backgroundColor: '#f5f7fa',
+      backgroundColor: '#f7f8fd',
       scale: 2,
       logging: false,
       useCORS: true,
@@ -565,7 +554,7 @@ const exportAsImage = async () => {
     document.body.removeChild(exportContainer)
 
     const link = document.createElement('a')
-    link.download = `旅行计划_${tripPlan.value?.city}_${new Date().getTime()}.png`
+    link.download = `小星探行_${tripPlan.value?.city}_${new Date().getTime()}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
 
@@ -576,45 +565,14 @@ const exportAsImage = async () => {
   }
 }
 
-// 导出为PDF
 const exportAsPDF = async () => {
   try {
     message.loading({ content: '正在生成PDF...', key: 'export', duration: 0 })
+    const exportContainer = await buildExportContainer()
 
-    const element = document.querySelector('.main-content') as HTMLElement
-    if (!element) {
-      throw new Error('未找到内容元素')
-    }
-
-    // 创建一个独立的容器
-    const exportContainer = document.createElement('div')
-    exportContainer.style.width = element.offsetWidth + 'px'
-    exportContainer.style.backgroundColor = '#f5f7fa'
-    exportContainer.style.padding = '20px'
-
-    // 复制所有内容
-    exportContainer.innerHTML = element.innerHTML
-
-    // 处理地图截图
-    const mapContainer = document.getElementById('amap-container')
-    if (mapContainer && map) {
-      const mapCanvas = mapContainer.querySelector('canvas')
-      if (mapCanvas) {
-        const mapSnapshot = mapCanvas.toDataURL('image/png')
-        const exportMapContainer = exportContainer.querySelector('#amap-container')
-        if (exportMapContainer) {
-          exportMapContainer.innerHTML = `<img src="${mapSnapshot}" style="width:100%;height:100%;object-fit:cover;" />`
-        }
-      }
-    }
-
-    // 把跨域景点图片转成base64,否则html2canvas会因为canvas tainted而截不到
-    await replaceImagesWithBase64(exportContainer)
-
-    // html2canvas 截图 + PDF 生成
     document.body.appendChild(exportContainer)
     const canvas = await html2canvas(exportContainer, {
-      backgroundColor: '#f5f7fa',
+      backgroundColor: '#f7f8fd',
       scale: 2,
       logging: false,
       useCORS: true,
@@ -623,11 +581,7 @@ const exportAsPDF = async () => {
     document.body.removeChild(exportContainer)
 
     const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    })
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
     const imgWidth = 210
     const imgHeight = (canvas.height * imgWidth) / canvas.width
@@ -644,8 +598,7 @@ const exportAsPDF = async () => {
       heightLeft -= 297
     }
 
-    pdf.save(`旅行计划_${tripPlan.value?.city}_${new Date().getTime()}.pdf`)
-
+    pdf.save(`小星探行_${tripPlan.value?.city}_${new Date().getTime()}.pdf`)
     message.success({ content: 'PDF导出成功!', key: 'export' })
   } catch (error: any) {
     console.error('导出PDF失败:', error)
@@ -653,185 +606,263 @@ const exportAsPDF = async () => {
   }
 }
 
+// ============ 地图 ============
+
 const initMap = async () => {
   try {
+    if (!import.meta.env.VITE_AMAP_WEB_JS_KEY) {
+      console.warn('未配置 VITE_AMAP_WEB_JS_KEY,跳过地图渲染')
+      return
+    }
     const AMap = await AMapLoader.load({
-      key: import.meta.env.VITE_AMAP_WEB_JS_KEY,  // 高德地图Web端(JS API) Key
+      key: import.meta.env.VITE_AMAP_WEB_JS_KEY,
       version: '2.0',
       plugins: ['AMap.Marker', 'AMap.Polyline', 'AMap.InfoWindow']
     })
 
-    // 创建地图实例
     map = new AMap.Map('amap-container', {
       zoom: 12,
-      center: [116.397128, 39.916527], // 默认中心点(北京)
+      center: [116.397128, 39.916527],
       viewMode: '3D'
     })
 
-    // 添加景点标记
     addAttractionMarkers(AMap)
-
-    message.success('地图加载成功')
   } catch (error) {
     console.error('地图加载失败:', error)
-    message.error('地图加载失败')
   }
 }
 
-// 添加景点标记
+const hasValidCoords = (loc?: { longitude?: number; latitude?: number }) => {
+  if (!loc) return false
+  const { longitude, latitude } = loc
+  return (
+    Number.isFinite(longitude) &&
+    Number.isFinite(latitude) &&
+    longitude !== 0 &&
+    latitude !== 0 &&
+    Math.abs(longitude!) <= 180 &&
+    Math.abs(latitude!) <= 90
+  )
+}
+
 const addAttractionMarkers = (AMap: any) => {
   if (!tripPlan.value) return
 
   const markers: any[] = []
   const allAttractions: any[] = []
 
-  // 收集所有景点
   tripPlan.value.days.forEach((day, dayIndex) => {
-    day.attractions.forEach((attraction, attrIndex) => {
-      if (attraction.location && attraction.location.longitude && attraction.location.latitude) {
-        allAttractions.push({
-          ...attraction,
-          dayIndex,
-          attrIndex
-        })
+    day.attractions?.forEach((attraction, attrIndex) => {
+      // 坐标缺失或非法的景点不参与地图渲染,避免高德抛 NaN 异常
+      if (hasValidCoords(attraction.location)) {
+        allAttractions.push({ ...attraction, dayIndex, attrIndex })
       }
     })
   })
 
-  // 创建标记
   allAttractions.forEach((attraction, index) => {
     const marker = new AMap.Marker({
       position: [attraction.location.longitude, attraction.location.latitude],
       title: attraction.name,
       label: {
-        content: `<div style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${index + 1}</div>`,
+        content: `<div style="background: linear-gradient(135deg,#6d5efc,#a06bf0); color:#fff; padding:3px 8px; border-radius:8px; font-size:12px; font-weight:600;">${index + 1}</div>`,
         offset: new AMap.Pixel(0, -30)
       }
     })
 
-    // 创建信息窗口
+    const timeEntry = tripPlan.value?.days[attraction.dayIndex]?.timeline?.find(
+      (e: TimelineEntry) => e.type === 'attraction' && e.title === attraction.name
+    )
+
     const infoWindow = new AMap.InfoWindow({
       content: `
-        <div style="padding: 10px;">
+        <div style="padding: 10px; max-width: 260px;">
           <h4 style="margin: 0 0 8px 0;">${attraction.name}</h4>
-          <p style="margin: 4px 0;"><strong>地址:</strong> ${attraction.address}</p>
-          <p style="margin: 4px 0;"><strong>游览时长:</strong> ${attraction.visit_duration}分钟</p>
-          <p style="margin: 4px 0;"><strong>描述:</strong> ${attraction.description}</p>
-          <p style="margin: 4px 0; color: #1890ff;"><strong>第${attraction.dayIndex + 1}天 景点${attraction.attrIndex + 1}</strong></p>
-        </div>
-      `,
+          ${timeEntry ? `<p style="margin:4px 0;color:#4c3fd6;"><strong>${timeEntry.arrive_time} - ${timeEntry.leave_time}</strong></p>` : ''}
+          <p style="margin: 4px 0;"><strong>地址:</strong> ${attraction.address || '—'}</p>
+          <p style="margin: 4px 0;"><strong>游览:</strong> ${attraction.visit_duration} 分钟</p>
+          <p style="margin: 4px 0; color: #6d5efc;"><strong>第${attraction.dayIndex + 1}天 第${attraction.attrIndex + 1}站</strong></p>
+        </div>`,
       offset: new AMap.Pixel(0, -30)
     })
 
-    // 点击标记显示信息窗口
-    marker.on('click', () => {
-      infoWindow.open(map, marker.getPosition())
-    })
-
+    marker.on('click', () => infoWindow.open(map, marker.getPosition()))
     markers.push(marker)
   })
 
-  // 添加标记到地图
-  map.add(markers)
-
-  // 自动调整视野以包含所有标记
-  if (allAttractions.length > 0) {
-    map.setFitView(markers)
+  if (markers.length) {
+    map.add(markers)
+    try {
+      map.setFitView(markers)
+    } catch (err) {
+      console.warn('地图视野自适应失败:', err)
+    }
   }
-
-  // 绘制路线
   drawRoutes(AMap, allAttractions)
 }
 
-// 绘制路线
 const drawRoutes = (AMap: any, attractions: any[]) => {
   if (attractions.length < 2) return
 
-  // 按天分组绘制路线
-  const dayGroups: any = {}
-  attractions.forEach(attr => {
-    if (!dayGroups[attr.dayIndex]) {
-      dayGroups[attr.dayIndex] = []
-    }
+  const dayGroups: Record<number, any[]> = {}
+  attractions.forEach((attr) => {
+    if (!dayGroups[attr.dayIndex]) dayGroups[attr.dayIndex] = []
     dayGroups[attr.dayIndex].push(attr)
   })
 
-  // 为每天的景点绘制路线
-  Object.values(dayGroups).forEach((dayAttractions: any) => {
-    if (dayAttractions.length < 2) return
+  const palette = ['#6d5efc', '#ff8a3d', '#14c8b1', '#4facfe', '#f5576c']
 
+  Object.entries(dayGroups).forEach(([dayIndex, dayAttractions]) => {
+    if (dayAttractions.length < 2) return
     const path = dayAttractions.map((attr: any) => [
       attr.location.longitude,
       attr.location.latitude
     ])
 
-    const polyline = new AMap.Polyline({
-      path: path,
-      strokeColor: '#1890ff',
-      strokeWeight: 4,
-      strokeOpacity: 0.8,
-      strokeStyle: 'solid',
-      showDir: true // 显示方向箭头
-    })
-
-    map.add(polyline)
+    map.add(
+      new AMap.Polyline({
+        path,
+        strokeColor: palette[Number(dayIndex) % palette.length],
+        strokeWeight: 5,
+        strokeOpacity: 0.85,
+        strokeStyle: 'solid',
+        showDir: true
+      })
+    )
   })
 }
 </script>
 
 <style scoped>
-.result-container {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  padding: 40px 20px;
+.result-page {
+  padding: 26px 20px 70px;
+  max-width: 1520px;
+  margin: 0 auto;
 }
 
+/* ============ 顶部 ============ */
+
 .page-header {
-  max-width: 1200px;
-  margin: 0 auto 30px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  animation: fadeInDown 0.6s ease-out;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid #eae7fb;
+  box-shadow: 0 10px 26px rgba(76, 63, 214, 0.08);
+  backdrop-filter: blur(8px);
+  animation: fadeInDown 0.5s ease-out;
 }
 
 .back-button {
-  border-radius: 8px;
+  border-radius: 999px;
   font-weight: 500;
 }
 
-/* 内容布局 */
-.content-wrapper {
-  max-width: 1400px;
-  margin: 0 auto;
+.header-plan {
   display: flex;
-  gap: 24px;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: #6b7280;
+}
+
+.plan-city {
+  font-size: 16px;
+  font-weight: 800;
+  color: #3f3a76;
+  letter-spacing: 1px;
+}
+
+.plan-days {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #6d5efc, #a06bf0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ============ 布局 ============ */
+
+.content-wrapper {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
 }
 
 .side-nav {
-  width: 240px;
+  width: 236px;
   flex-shrink: 0;
 }
 
-.side-nav :deep(.ant-menu) {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  background: white;
+.nav-card {
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(76, 63, 214, 0.09);
+  border: 1px solid #eef0f8;
+  overflow: hidden;
+  padding-bottom: 12px;
 }
 
-.side-nav :deep(.ant-menu-item) {
-  margin: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.3s ease;
+.nav-title {
+  padding: 14px 18px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f3a76;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #f1f2f8;
+  margin-bottom: 6px;
+}
+
+.side-nav :deep(.ant-menu) {
+  border-inline-end: none !important;
+  background: transparent;
+}
+
+.side-nav :deep(.ant-menu-item),
+.side-nav :deep(.ant-menu-submenu-title) {
+  margin: 3px 8px !important;
+  border-radius: 10px;
+  width: auto;
+  font-size: 13px;
 }
 
 .side-nav :deep(.ant-menu-item-selected) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, #6d5efc 0%, #8b5cf6 100%) !important;
+  color: #fff !important;
 }
 
 .side-nav :deep(.ant-menu-item:hover) {
-  background: rgba(102, 126, 234, 0.1);
+  background: rgba(109, 94, 252, 0.09) !important;
+}
+
+.nav-assistant {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: calc(100% - 24px);
+  margin: 12px 12px 0;
+  padding: 10px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #6d5efc, #a06bf0);
+  box-shadow: 0 8px 20px rgba(109, 94, 252, 0.3);
+  transition: transform 0.22s ease;
+}
+
+.nav-assistant:hover {
+  transform: translateY(-2px);
 }
 
 .main-content {
@@ -839,151 +870,13 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
   min-width: 0;
 }
 
-/* 景点图片样式 */
-.attraction-image-wrapper {
-  position: relative;
-  margin-bottom: 12px;
-  border-radius: 8px;
-  overflow: hidden;
-}
+/* ============ 顶部信息区 ============ */
 
-.attraction-image {
-  width: 100%;
-  height: 200px;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.attraction-image-wrapper:hover .attraction-image {
-  transform: scale(1.05);
-}
-
-.attraction-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.badge-number {
-  font-size: 18px;
-}
-
-.price-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(255, 77, 79, 0.9);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-weight: bold;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 天气卡片样式 */
-.weather-card {
-  background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
-  border: none !important;
-  transition: all 0.3s ease;
-}
-
-.weather-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-}
-
-.weather-date {
-  font-size: 16px;
-  font-weight: bold;
-  color: #00796b;
-  margin-bottom: 12px;
-  text-align: center;
-}
-
-.weather-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.weather-icon {
-  font-size: 24px;
-}
-
-.weather-label {
-  font-size: 12px;
-  color: #666;
-}
-
-.weather-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #00796b;
-}
-
-.weather-wind {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 121, 107, 0.2);
-  text-align: center;
-  color: #00796b;
-  font-size: 14px;
-}
-
-/* 回到顶部按钮 */
-.back-top-button {
-  width: 50px;
-  height: 50px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.back-top-button:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-/* 酒店卡片样式 */
-.hotel-card {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border: none !important;
-}
-
-.hotel-card :deep(.ant-card-head) {
-  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
-}
-
-.hotel-title {
-  color: white !important;
-  font-weight: 600;
-}
-
-/* 顶部信息区布局 */
 .top-info-section {
   display: flex;
   gap: 20px;
   margin-bottom: 20px;
+  align-items: stretch;
 }
 
 .left-info {
@@ -995,11 +888,50 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
 
 .right-map {
   flex: 1;
+  min-width: 0;
 }
 
-/* 行程概览卡片 */
-.overview-card {
-  height: fit-content;
+.card-title {
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.card-title-sub {
+  margin-left: 10px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ============ 概览 ============ */
+
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  text-align: center;
+  padding: 12px 6px;
+  border-radius: 12px;
+  background: linear-gradient(150deg, #f5f3ff 0%, #ffffff 100%);
+  border: 1px solid #ece8ff;
+}
+
+.stat-value {
+  font-size: 19px;
+  font-weight: 800;
+  color: #4c3fd6;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #8b90a8;
+  margin-top: 2px;
 }
 
 .overview-content {
@@ -1011,219 +943,291 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .info-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #666;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #6b7280;
 }
 
 .info-value {
-  font-size: 15px;
-  color: #333;
-  line-height: 1.6;
+  font-size: 13.5px;
+  color: #2f3350;
+  line-height: 1.7;
 }
 
-/* 预算卡片 */
-.budget-card {
-  height: fit-content;
-}
+/* ============ 预算 ============ */
 
 .budget-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .budget-item {
   text-align: center;
-  padding: 12px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
-  border-radius: 8px;
-  border: 1px solid #e8e8e8;
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: linear-gradient(150deg, #f7f8ff 0%, #ffffff 100%);
+  border: 1px solid #eef0fa;
 }
 
 .budget-label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 8px;
+  font-size: 12px;
+  color: #7b8199;
+  margin-bottom: 6px;
 }
 
 .budget-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1890ff;
+  font-size: 18px;
+  font-weight: 800;
+  color: #6d5efc;
+  font-variant-numeric: tabular-nums;
 }
 
 .budget-total {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 8px;
-  color: white;
+  padding: 15px 18px;
+  border-radius: 14px;
+  background: linear-gradient(120deg, #6d5efc 0%, #8b5cf6 55%, #ff8a3d 145%);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(109, 94, 252, 0.32);
 }
 
 .total-label {
-  font-size: 16px;
+  font-size: 14.5px;
   font-weight: 600;
 }
 
 .total-value {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 地图卡片 */
+.budget-foot {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: #98a0b8;
+}
+
+/* ============ 地图 ============ */
+
 .map-card {
   height: 100%;
-  min-height: 500px;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
 }
 
 .map-card :deep(.ant-card-body) {
-  height: calc(100% - 57px);
+  flex: 1;
   padding: 0;
+  min-height: 460px;
 }
 
-/* 每日行程卡片 */
+/* ============ 每日 ============ */
+
 .days-card {
-  margin-top: 20px;
+  margin-bottom: 20px;
 }
 
 .day-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
+  flex-wrap: wrap;
+}
+
+.day-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.day-chip {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #6d5efc, #a06bf0);
+  border-radius: 8px;
+  padding: 3px 9px;
 }
 
 .day-title {
-  font-size: 18px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #2f3350;
+}
+
+.day-time {
+  font-size: 12.5px;
+  color: #6d5efc;
   font-weight: 600;
-  color: #333;
+  font-variant-numeric: tabular-nums;
 }
 
-.day-date {
-  font-size: 14px;
-  color: #999;
-}
-
-.day-info {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
-  border-radius: 8px;
-  border: 1px solid #e8e8e8;
-}
-
-.info-row {
+.day-header-right {
   display: flex;
   gap: 12px;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
-.info-row:last-child {
-  margin-bottom: 0;
+.day-meta {
+  font-size: 12px;
+  color: #8b90a8;
 }
 
-.info-row .label {
-  font-weight: 600;
-  color: #666;
-  min-width: 100px;
-}
-
-.info-row .value {
-  color: #333;
-  flex: 1;
-}
-
-/* 卡片样式优化 */
-:deep(.ant-card) {
+.day-desc {
+  font-size: 13px;
+  color: #5c6280;
+  line-height: 1.8;
+  padding: 12px 14px;
+  margin-bottom: 16px;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 20px;
-  transition: all 0.3s ease;
-  animation: fadeInUp 0.6s ease-out;
+  background: #fafbff;
+  border-left: 3px solid #6d5efc;
 }
 
-:deep(.ant-card:hover) {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+/* ============ 天气 ============ */
+
+.weather-section {
+  margin-top: 20px;
+}
+
+.weather-card {
+  border-radius: 14px !important;
+  background: linear-gradient(140deg, #e8fbf7 0%, #d7f5ff 100%);
+  border: none !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.weather-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(20, 200, 177, 0.2);
+}
+
+.weather-date {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0f7d6c;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.weather-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.weather-icon {
+  font-size: 20px;
+}
+
+.weather-label {
+  font-size: 11px;
+  color: #5c8f86;
+}
+
+.weather-value {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0f7d6c;
+}
+
+.weather-wind {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(15, 125, 108, 0.16);
+  text-align: center;
+  color: #0f7d6c;
+  font-size: 12.5px;
+}
+
+/* ============ 回到顶部 ============ */
+
+.back-top-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #6d5efc, #a06bf0);
+  box-shadow: 0 10px 24px rgba(109, 94, 252, 0.4);
+  cursor: pointer;
+  transition: transform 0.25s ease;
+}
+
+.back-top-button:hover {
+  transform: scale(1.08);
+}
+
+/* ============ 卡片统一风格 ============ */
+
+:deep(.ant-card) {
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(76, 63, 214, 0.08);
+  border: 1px solid #eef0f8;
+  transition: box-shadow 0.25s ease;
 }
 
 :deep(.ant-card-head) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white !important;
-  border-radius: 12px 12px 0 0;
-  font-weight: 600;
+  background: linear-gradient(120deg, #6d5efc 0%, #8b5cf6 60%, #a06bf0 100%);
+  border-radius: 18px 18px 0 0;
+  border-bottom: none;
+  min-height: 50px;
 }
 
 :deep(.ant-card-head-title) {
-  color: white !important;
-  font-size: 18px;
+  color: #fff !important;
+  font-size: 15.5px;
 }
 
-:deep(.ant-card-head-title span) {
-  color: white !important;
-}
-
-/* Collapse样式 */
 :deep(.ant-collapse) {
   border: none;
   background: transparent;
 }
 
 :deep(.ant-collapse-item) {
-  margin-bottom: 16px;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  margin-bottom: 14px;
+  border: 1px solid #eef0f8;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 6px 16px rgba(76, 63, 214, 0.05);
 }
 
 :deep(.ant-collapse-header) {
-  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
-  padding: 16px 20px !important;
-  font-weight: 600;
+  background: linear-gradient(120deg, #f7f6ff 0%, #ffffff 70%);
+  padding: 14px 18px !important;
+  align-items: center !important;
 }
 
 :deep(.ant-collapse-content) {
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid #f1f2f8;
 }
 
 :deep(.ant-collapse-content-box) {
-  padding: 20px;
+  padding: 18px;
 }
 
-/* 统计卡片样式 */
-:deep(.ant-statistic-title) {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-:deep(.ant-statistic-content) {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1890ff;
-}
-
-/* 景点卡片样式 */
-:deep(.ant-list-item) {
-  transition: all 0.3s ease;
-}
-
-:deep(.ant-list-item:hover) {
-  transform: scale(1.02);
-}
-
-/* 动画 */
 @keyframes fadeInDown {
   from {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: translateY(-16px);
   }
   to {
     opacity: 1;
@@ -1231,47 +1235,35 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
   }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* ============ 响应式 ============ */
 
-/* 响应式设计 */
 @media (max-width: 1200px) {
-  /* 空间不足时,顶部信息区改为纵向堆叠,避免地图被挤压 */
   .top-info-section {
     flex-direction: column;
   }
-
   .left-info {
     flex: none;
   }
-
-  .right-map {
-    width: 100%;
-  }
-
   .map-card {
-    height: 450px;
-    min-height: 450px;
+    min-height: 420px;
+  }
+  .map-card :deep(.ant-card-body) {
+    min-height: 360px;
+  }
+  .content-wrapper {
+    flex-direction: column;
+  }
+  .side-nav {
+    width: 100%;
   }
 }
 
 @media (max-width: 768px) {
-  .result-container {
-    padding: 20px 10px;
+  .result-page {
+    padding: 18px 10px 60px;
   }
-
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
+  .budget-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
-

@@ -17,6 +17,9 @@ class TripRequest(BaseModel):
     accommodation: str = Field(..., description="住宿偏好", example="经济型酒店")
     preferences: List[str] = Field(default=[], description="旅行偏好标签", example=["历史文化", "美食"])
     free_text_input: Optional[str] = Field(default="", description="额外要求", example="希望多安排一些博物馆")
+    arrival_time: str = Field(default="09:00", description="抵达城市的时刻 HH:MM")
+    travelers: int = Field(default=2, ge=1, le=20, description="出行人数")
+    transport_preferences: List[str] = Field(default_factory=lambda: ["步行","公交","地铁","打车","骑行"], description="可接受的交通方式偏好")
     
     class Config:
         json_schema_extra = {
@@ -94,6 +97,73 @@ class Hotel(BaseModel):
     estimated_cost: int = Field(default=0, description="预估费用(元/晚)")
 
 
+class Venue(BaseModel):
+    """地点（餐厅 / 酒店）——由高德实时数据填充"""
+    name: str = Field(..., description="地点名称")
+    kind: str = Field(..., description="类型: restaurant(餐厅)/hotel(酒店)")
+    address: str = Field(default="", description="详细地址")
+    location: Optional[Location] = Field(default=None, description="经纬度坐标")
+    rating: float = Field(default=0, description="评分")
+    cost: float = Field(default=0, description="人均/每晚费用(元)")
+    tags: List[str] = Field(default=[], description="标签,如菜系、人均价位")
+    description: str = Field(default="", description="中文简介")
+    distance: str = Field(default="", description="距离说明,如 距景点320米")
+    tel: str = Field(default="", description="联系电话")
+    photo: str = Field(default="", description="图片URL")
+    party_size: int = Field(default=0, description="适配人数")
+    menu: List[str] = Field(default=[], description="招牌菜/特色菜列表")
+    source: str = Field(default="amap", description="数据来源: amap/llm/fallback")
+
+    class Config:
+        extra = "ignore"
+
+
+class TransportPlan(BaseModel):
+    """两站之间的交通方案"""
+    mode: str = Field(..., description="交通方式: walking/bus/subway/taxi/cycling/driving")
+    label: str = Field(..., description="中文标签,如 步行/地铁公交/打车")
+    duration_min: int = Field(..., description="预计耗时(分钟)")
+    distance_m: int = Field(..., description="预计距离(米)")
+    cost: int = Field(default=0, description="预计费用(元,按人数计)")
+    summary: str = Field(..., description="一句话方案,如 地铁1号线约18分钟")
+    reason: str = Field(..., description="选择该方式的原因(结合用户偏好)")
+    detail_lines: List[str] = Field(default=[], description="明细行,如具体线路名")
+
+    class Config:
+        extra = "ignore"
+
+
+class TimelineEntry(BaseModel):
+    """时间轴上的一条安排"""
+    seq: int = Field(..., description="序号,从0开始")
+    type: str = Field(..., description="类型: arrival/attraction/meal/hotel/rest")
+    title: str = Field(..., description="标题")
+    address: str = Field(default="", description="地址")
+    location: Optional[Location] = Field(default=None, description="经纬度坐标")
+    arrive_time: str = Field(..., description="到达时刻 HH:MM")
+    leave_time: str = Field(default="", description="离开时刻 HH:MM,酒店条目为 次日")
+    duration_min: int = Field(default=0, description="停留时长(分钟)")
+    next_title: str = Field(default="", description="下一站标题")
+    next_transport: Optional[TransportPlan] = Field(default=None, description="前往下一站的交通方案")
+    notes: str = Field(default="", description="备注")
+    venue: Optional[Venue] = Field(default=None, description="关联餐厅/酒店")
+    attraction: Optional[Attraction] = Field(default=None, description="关联景点")
+    meal_type: str = Field(default="", description="餐饮类型: lunch/dinner")
+
+    class Config:
+        extra = "ignore"
+
+
+class RestaurantRecommendation(BaseModel):
+    """某一餐的餐厅推荐"""
+    meal_type: str = Field(..., description="餐饮类型: lunch/dinner")
+    near: str = Field(..., description="邻近景点名称")
+    venues: List[Venue] = Field(default=[], description="推荐餐厅列表")
+
+    class Config:
+        extra = "ignore"
+
+
 class DayPlan(BaseModel):
     """单日行程"""
     date: str = Field(..., description="日期 YYYY-MM-DD")
@@ -104,6 +174,13 @@ class DayPlan(BaseModel):
     hotel: Optional[Hotel] = Field(default=None, description="推荐酒店")
     attractions: List[Attraction] = Field(default=[], description="景点列表")
     meals: List[Meal] = Field(default=[], description="餐饮列表")
+    start_time: str = Field(default="09:00", description="当日开始时刻 HH:MM")
+    end_time: str = Field(default="", description="当日结束时刻 HH:MM")
+    timeline: List[TimelineEntry] = Field(default=[], description="时间轴行程")
+    restaurants: List[RestaurantRecommendation] = Field(default=[], description="餐厅推荐")
+
+    class Config:
+        extra = "ignore"
 
 
 class WeatherInfo(BaseModel):
@@ -155,6 +232,30 @@ class TripPlanResponse(BaseModel):
     success: bool = Field(..., description="是否成功")
     message: str = Field(default="", description="消息")
     data: Optional[TripPlan] = Field(default=None, description="旅行计划数据")
+
+
+class ChatRequest(BaseModel):
+    """旅行助手对话请求"""
+    message: str = Field(..., description="用户提问或修改要求")
+    plan: Optional[TripPlan] = Field(default=None, description="当前旅行计划(用于上下文)")
+    history: List[dict] = Field(default=[], description="历史对话,元素形如 {\"role\":\"user\",\"content\":\"...\"}")
+    travelers: int = Field(default=2, description="出行人数")
+    transport_preferences: List[str] = Field(default=[], description="可接受的交通方式偏好")
+
+    class Config:
+        extra = "ignore"
+
+
+class ChatResponse(BaseModel):
+    """旅行助手对话响应"""
+    success: bool = Field(default=True, description="是否成功")
+    reply: str = Field(..., description="助手的中文回答")
+    plan: Optional[TripPlan] = Field(default=None, description="修改后的完整旅行计划,无修改时为 null")
+    modified: bool = Field(default=False, description="是否修改了行程")
+    suggestions: List[str] = Field(default=[], description="可继续追问的短问题")
+
+    class Config:
+        extra = "ignore"
 
 
 class POIInfo(BaseModel):

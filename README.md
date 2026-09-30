@@ -1,60 +1,98 @@
-# HelloAgents智能旅行助手 🌍✈️
+# 小星探行 🧭✨
 
-基于HelloAgents框架构建的智能旅行规划助手,集成高德地图MCP服务,提供个性化的旅行计划生成。
+> **小星探行，快乐出行**
+
+基于 HelloAgents 框架构建的智能旅行规划助手。集成高德地图服务，从你**抵达城市的那一刻**开始排布精细时刻表，
+自动计算每一段通勤的时长与方式，并按出行人数推荐酒店与高分餐厅 —— 一份完整攻略，直接出发。
 
 ## ✨ 功能特点
 
-- 🤖 **AI驱动的旅行规划**: 基于HelloAgents框架的SimpleAgent,智能生成详细的多日旅程
-- 🗺️ **高德地图集成**: 通过MCP协议接入高德地图服务,支持景点搜索、路线规划、天气查询
-- 🧠 **智能工具调用**: Agent自动调用高德地图MCP工具,获取实时POI、路线和天气信息
-- 🎨 **现代化前端**: Vue3 + TypeScript + Vite,响应式设计,流畅的用户体验
-- 📱 **完整功能**: 包含住宿、交通、餐饮和景点游览时间推荐
+### 🛰️ 1. 以抵达时刻为起点的精细时刻表
+
+- 输入**抵达时刻**（如 09:30），时刻表自动从这一刻开始向后排布。
+- 每一站都标注：**到达时间 · 地点 · 离开时间 · 下一站**。
+- 景点间**自动计算通勤时长**，并在时间轴上给出通勤方式、耗时、距离与费用。
+- 每日总结当日 `开始时刻`、`结束时刻`、`站点数`、`通勤总时长`；时刻不会排到深夜。
+
+### 👥 2. 出行人数参与推荐
+
+- 首页新增**【出行人数】**输入（1–20 人，含快捷选择）。
+- 酒店推荐会说明房晚价格与需要几间房（`(人数+1)/2`）。
+- 餐厅推荐按人均消费 × 人数计入预算；交通费用按人数计算（如打车每 4 人一车）。
+- 预算明细全部按人数汇总，并给出人均花费。
+
+### 🚇 3. 景点之间自动推荐交通方案
+
+- 勾选可接受的出行偏好：**步行 / 公交 / 地铁 / 打车 / 骑行**。
+- 按距离区间与你的偏好匹配最优方式，并调用真实路径规划获取耗时：
+  - `< 1.2 km` → 步行优先（备选骑行）
+  - `1.2–3.5 km` → 骑行优先（备选步行、公交地铁）
+  - `3.5–10 km` → 地铁 / 公交优先（备选打车）
+  - `> 10 km` → 地铁 / 公交优先（备选打车、自驾）
+- 每个方案都标注**耗时、距离、费用、路线摘要**，并说明**为什么这样选**。
+
+### 🏨 4. 末站酒店 + 周边高分餐厅
+
+- **当日末尾景点附近**推荐酒店：真实评分、价格、距离与房型建议。
+- 若行程中有用餐节点，则按**景点周边**搜索高分餐厅（按评分与距离排序），
+  并给出**特色菜品 / 招牌菜**、人均消费、距离与电话。
+
+### 📋 5. 全部信息整合为一份完整攻略
+
+无需手动对比信息：概览、预算、地图、每日时刻表、通勤方案、酒店、餐厅、
+特色菜品、天气提示全部集中在一个页面，并支持**导出为图片或 PDF**。
+
+### 🤖 6. 右侧悬浮「小星小探员」AI 助手
+
+- 页面右侧常驻悬浮按钮，点击唤起侧边 AI 助手。
+- 支持**对话式修改行程**：放慢节奏、改交通方式、换酒店、调整人数、增加美食安排……
+- 修改后会**自动重算**时刻表、通勤、餐厅与预算。
+- 也能**根据当前攻略回答细节问题**（例如「第 1 天晚饭附近有什么必吃？」）。
+
+### ⚡ 7. 真实的实时进度
+
+- 后端以 **SSE 流式**推送真实阶段进度（景点搜索 → 天气 → 酒店 → 行程编排 →
+  通勤计算 → 餐厅酒店 → 攻略整合），**进度随真实工作推进**，不会停在 90% 空等。
+- 面板同时显示已用时长与逐条阶段日志；流式通道不可用时自动回退到常规请求。
+
+### 🎨 8. 界面
+
+「小星探行 · 快乐出行」品牌主题、渐光背景、卡片化时刻表、通勤虚线连接、
+餐厅招牌菜标签、响应式布局，原有交互逻辑保持不变。
 
 ## 🏗️ 技术栈
 
-### 后端
-- **框架**: HelloAgents (基于SimpleAgent)
-- **API**: FastAPI
-- **MCP工具**: amap-mcp-server (高德地图)
-- **LLM**: 支持多种LLM提供商(OpenAI, DeepSeek等)
-
-### 前端
-- **框架**: Vue 3 + TypeScript
-- **构建工具**: Vite
-- **UI组件库**: Ant Design Vue
-- **地图服务**: 高德地图 JavaScript API
-- **HTTP客户端**: Axios
+**后端**：HelloAgents (SimpleAgent) · FastAPI · 高德地图 Web 服务 · MCP (amap-mcp-server) · SSE
+**前端**：Vue 3 · TypeScript · Vite · Ant Design Vue · 高德地图 JS API · Axios
 
 ## 📁 项目结构
 
 ```
-helloagents-trip-planner/
-├── backend/                    # 后端服务
+trip-planner/
+├── backend/
 │   ├── app/
-│   │   ├── agents/            # Agent实现
-│   │   │   └── trip_planner_agent.py
-│   │   ├── api/               # FastAPI路由
+│   │   ├── agents/trip_planner_agent.py   # 多智能体协作 + 流式进度
+│   │   ├── api/
 │   │   │   ├── main.py
-│   │   │   └── routes/
-│   │   │       ├── trip.py
-│   │   │       └── map.py
-│   │   ├── services/          # 服务层
-│   │   │   ├── amap_service.py
-│   │   │   └── llm_service.py
-│   │   ├── models/            # 数据模型
-│   │   │   └── schemas.py
-│   │   └── config.py          # 配置管理
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── .gitignore
-├── frontend/                   # 前端应用
-│   ├── src/
-│   │   ├── components/        # Vue组件
-│   │   ├── services/          # API服务
-│   │   ├── types/             # TypeScript类型
-│   │   └── views/             # 页面视图
-│   ├── package.json
-│   └── vite.config.ts
+│   │   │   └── routes/{trip,poi,map}.py   # 含 /trip/plan/stream 与 /trip/chat
+│   │   ├── services/
+│   │   │   ├── amap_service.py            # 高德 MCP 封装 + 景点图片
+│   │   │   ├── amap_rest.py               # 高德 Web 服务客户端(带缓存)
+│   │   │   ├── transport.py               # 交通方式匹配
+│   │   │   ├── timeline.py                # 时刻表 / 酒店 / 餐厅编排
+│   │   │   ├── dish_catalog.py            # 城市与菜系特色菜品库
+│   │   │   ├── llm_service.py
+│   │   │   └── unsplash_service.py
+│   │   ├── models/schemas.py
+│   │   └── config.py
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── components/AgentSidebar.vue    # 小星小探员 AI 助手
+│       ├── components/DayTimeline.vue     # 每日时刻表
+│       ├── views/{Home,Result}.vue
+│       ├── services/api.ts                # 含 SSE 流式解析
+│       └── types/index.ts
 └── README.md
 ```
 
@@ -64,149 +102,62 @@ helloagents-trip-planner/
 
 - Python 3.10+
 - Node.js 16+
-- 高德地图API密钥 (Web服务API和Web端(JS API))
-- LLM API密钥 (OpenAI/DeepSeek等)
+- 高德地图密钥：Web 服务 API Key（后端）+ Web 端 JS API Key（前端）
+- LLM API Key（OpenAI / DeepSeek 等）
 
-### 后端安装
+### 后端
 
-1. 进入后端目录
 ```bash
 cd backend
-```
-
-2. 创建虚拟环境
-```bash
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-3. 安装依赖
-```bash
+# Windows: venv\Scripts\activate    Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. 配置环境变量
-```bash
-cp .env.example .env
-# 编辑.env文件,填入你的API密钥
-```
-
-5. 启动后端服务
-```bash
+cp .env.example .env          # 填入 AMAP_API_KEY / LLM_* 等
 uvicorn app.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 前端安装
+### 前端
 
-1. 进入前端目录
 ```bash
 cd frontend
-```
-
-2. 安装依赖
-```bash
 npm install
+cp .env.example .env          # 填入 VITE_AMAP_WEB_JS_KEY
+npm run dev                   # 打开 http://localhost:5173
 ```
-
-3. 配置环境变量
-```bash
-# 创建.env文件, 填入高德地图Web API Key 和 Web端JS API Key
-cp .env.example .env
-```
-
-4. 启动开发服务器
-```bash
-npm run dev
-```
-
-5. 打开浏览器访问 `http://localhost:5173`
 
 ## 📝 使用指南
 
-1. 在首页填写旅行信息:
-   - 目的地城市
-   - 旅行日期和天数
-   - 交通方式偏好
-   - 住宿偏好
-   - 旅行风格标签
+1. **填写行程基础**：目的地城市、起止日期、**抵达时刻**、**出行人数**、住宿偏好。
+2. **选择出行偏好**：勾选可接受的交通方式（步行 / 公交 / 地铁 / 打车 / 骑行）与旅行偏好。
+3. 点击 **「生成我的完整攻略」**，实时进度条会展示真实阶段推进。
+4. 在结果页查看**每日精细时刻表**、通勤方案、周边高分餐厅与末站酒店。
+5. 需要调整？点右侧悬浮按钮召唤 **小星小探员**，用一句话改行程或追问细节。
+6. 满意后 **导出为图片 / PDF** 带走。
 
-2. 点击"生成旅行计划"按钮
+## 📄 API 文档
 
-3. 系统将:
-   - 调用HelloAgents Agent生成初步计划
-   - Agent自动调用高德地图MCP工具搜索景点
-   - Agent获取天气信息和路线规划
-   - 整合所有信息生成完整行程
+启动后端后访问 `http://localhost:8000/docs`。
 
-4. 查看结果:
-   - 每日详细行程
-   - 景点信息与地图标记
-   - 交通路线规划
-   - 天气预报
-   - 餐饮推荐
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/trip/plan` | 生成旅行计划（一次性返回） |
+| `POST` | `/api/trip/plan/stream` | 生成旅行计划（SSE 实时进度） |
+| `POST` | `/api/trip/chat` | 小星小探员：改行程 / 答疑 |
+| `GET` | `/api/trip/health` | 旅行规划服务健康检查 |
+| `GET` | `/api/poi/photo` | 获取景点图片 |
+| `GET` | `/api/map/poi` | 搜索 POI |
+| `GET` | `/api/map/weather` | 查询天气 |
+| `POST` | `/api/map/route` | 规划路线 |
 
-## 🔧 核心实现
+## 🙏 致谢
 
-### HelloAgents Agent集成
-
-```python
-from hello_agents import SimpleAgent, HelloAgentsLLM
-from hello_agents.tools import MCPTool
-
-# 创建高德地图MCP工具
-amap_tool = MCPTool(
-    name="amap",
-    server_command=["uvx", "amap-mcp-server"],
-    env={"AMAP_MAPS_API_KEY": "your_api_key"},
-    auto_expand=True
-)
-
-# 创建旅行规划Agent
-agent = SimpleAgent(
-    name="旅行规划助手",
-    llm=HelloAgentsLLM(),
-    system_prompt="你是一个专业的旅行规划助手..."
-)
-
-# 添加工具
-agent.add_tool(amap_tool)
-```
-
-### MCP工具调用
-
-Agent可以自动调用以下高德地图MCP工具:
-- `maps_text_search`: 搜索景点POI
-- `maps_weather`: 查询天气
-- `maps_direction_walking_by_address`: 步行路线规划
-- `maps_direction_driving_by_address`: 驾车路线规划
-- `maps_direction_transit_integrated_by_address`: 公共交通路线规划
-
-## 📄 API文档
-
-启动后端服务后,访问 `http://localhost:8000/docs` 查看完整的API文档。
-
-主要端点:
-- `POST /api/trip/plan` - 生成旅行计划
-- `GET /api/map/poi` - 搜索POI
-- `GET /api/map/weather` - 查询天气
-- `POST /api/map/route` - 规划路线
-
-## 🤝 贡献指南
-
-欢迎提交Pull Request或Issue!
+- [HelloAgents](https://github.com/datawhalechina/Hello-Agents) · [HelloAgents 框架](https://github.com/jjyaoao/HelloAgents)
+- [高德地图开放平台](https://lbs.amap.com/) · [amap-mcp-server](https://github.com/sugarforever/amap-mcp-server)
 
 ## 📜 开源协议
 
 CC BY-NC-SA 4.0
 
-## 🙏 致谢
-
-- [HelloAgents](https://github.com/datawhalechina/Hello-Agents) - 智能体教程
-- [HelloAgents框架](https://github.com/jjyaoao/HelloAgents) - 智能体框架
-- [高德地图开放平台](https://lbs.amap.com/) - 地图服务
-- [amap-mcp-server](https://github.com/sugarforever/amap-mcp-server) - 高德地图MCP服务器
-
 ---
 
-**HelloAgents智能旅行助手** - 让旅行计划变得简单而智能 🌈
-
+**小星探行** —— 小星探行，快乐出行 🧭🌈

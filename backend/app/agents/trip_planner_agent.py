@@ -1,10 +1,12 @@
 """多智能体旅行规划系统"""
 
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Iterator, Tuple
 from hello_agents import SimpleAgent
 from hello_agents.tools import MCPTool
 from ..services.llm_service import get_llm
+from ..services.amap_rest import AmapRest
+from ..services.timeline import enrich_plan, plan_has_attractions
 from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location, Hotel
 from ..config import get_settings
 
@@ -105,6 +107,7 @@ PLANNER_AGENT_PROMPT = """你是行程规划专家。你的任务是根据景点
           "visit_duration": 120,
           "description": "景点详细描述",
           "category": "景点类别",
+          "rating": 4.6,
           "ticket_price": 60
         }
       ],
@@ -144,7 +147,11 @@ PLANNER_AGENT_PROMPT = """你是行程规划专家。你的任务是根据景点
 4. 考虑景点之间的距离和游览时间
 5. 每天必须包含早中晚三餐
 6. 提供实用的旅行建议
-7. **必须包含预算信息**:
+7. 必须尊重用户给出的抵达时间与出行人数:
+   - 抵达当天从抵达时间之后开始安排行程,不要安排早于抵达时间的活动
+   - 景点数量与用餐安排要匹配出行人数,不要安排超出人数的活动
+8. 每个景点请给出真实评分(rating,0-5 的数字)
+9. **必须包含预算信息**:
    - 景点门票价格(ticket_price)
    - 餐饮预估费用(estimated_cost)
    - 酒店预估费用(estimated_cost)
@@ -162,6 +169,10 @@ class MultiAgentTripPlanner:
         try:
             settings = get_settings()
             self.llm = get_llm()
+
+            # 高德 Web 服务 REST 客户端(用于坐标、路线、餐厅、酒店的真实数据)
+            print("  - 初始化高德 REST 客户端...")
+            self.amap = AmapRest(settings.amap_api_key)
 
             # 创建共享的MCP工具(只创建一次)
             print("  - 创建共享MCP工具...")
@@ -220,6 +231,111 @@ class MultiAgentTripPlanner:
             traceback.print_exc()
             raise
     
+    def plan_trip_stream(self, request: TripRequest) -> Iterator[Tuple[str, Any]]:
+        """
+        以生成器方式生成旅行计划,边执行边上报进度
+
+        Yields:
+            ("progress", {"percent": int, "message": str, "stage": str})
+            ("result", TripPlan)
+        """
+        try:
+            print(f"\n{'='*60}")
+            print(f"🚀 开始多智能体协作规划旅行...")
+            print(f"目的地: {request.city}")
+            print(f"日期: {request.start_date} 至 {request.end_date}")
+            print(f"天数: {request.travel_days}天")
+            print(f"抵达时间: {getattr(request, 'arrival_time', '09:00')}")
+            print(f"出行人数: {getattr(request, 'travelers', 2)}人")
+            print(f"交通偏好: {', '.join(getattr(request, 'transport_preferences', []) or []) or '不限'}")
+            print(f"偏好: {', '.join(request.preferences) if request.preferences else '无'}")
+            print(f"{'='*60}\n")
+
+            yield ("progress", {"percent": 5, "message": "正在初始化小星探员…", "stage": "init"})
+
+            # 步骤1: 景点搜索Agent搜索景点
+            print("📍 步骤1: 搜索景点...")
+            yield ("progress", {"percent": 15, "message": "正在搜索目的地景点…", "stage": "attraction"})
+            attraction_query = self._build_attraction_query(request)
+            attraction_response = self.attraction_agent.run(attraction_query)
+            print(f"景点搜索结果: {attraction_response[:200]}...\n")
+
+            # 步骤2: 天气查询Agent查询天气
+            print("🌤️  步骤2: 查询天气...")
+            yield ("progress", {"percent": 35, "message": "正在查询当地天气…", "stage": "weather"})
+            weather_query = f"请查询{request.city}的天气信息"
+            weather_response = self.weather_agent.run(weather_query)
+            print(f"天气查询结果: {weather_response[:200]}...\n")
+
+            # 步骤3: 酒店推荐Agent搜索酒店
+            print("🏨 步骤3: 搜索酒店...")
+            yield ("progress", {"percent": 48, "message": "正在筛选住宿…", "stage": "hotel"})
+            hotel_query = f"请搜索{request.city}的{request.accommodation}酒店"
+            hotel_response = self.hotel_agent.run(hotel_query)
+            print(f"酒店搜索结果: {hotel_response[:200]}...\n")
+
+            # 步骤4: 行程规划Agent整合信息生成计划
+            print("📋 步骤4: 生成行程计划...")
+            yield ("progress", {"percent": 58, "message": "正在编排每日行程…", "stage": "planner"})
+            planner_query = self._build_planner_query(request, attraction_response, weather_response, hotel_response)
+            planner_response = self.planner_agent.run(planner_query)
+            print(f"行程规划结果: {planner_response[:300]}...\n")
+
+            # 解析最终计划
+            trip_plan = self._parse_response(planner_response, request)
+
+            # 行程不可用(无景点)时改用备用方案
+            if not plan_has_attractions(trip_plan):
+                print("⚠️  行程中没有可用景点,使用备用方案")
+                trip_plan = self._create_fallback_plan(request)
+
+            # 步骤5: 用高德真实数据充实行程
+            # 关键:把 enrich_plan 内部的细粒度进度桥接成 SSE 事件,
+            # 否则 62% 之后会直接跳到 96%,中段(逐日检索与路径规划)完全不推进。
+            yield ("progress", {"percent": 62, "message": "正在校准景点坐标…", "stage": "enrich"})
+            enrich_events: List[Dict[str, Any]] = []
+
+            def collect_progress(percent: int, message: str) -> None:
+                """收集充实行程过程中的进度(在工作线程内被同步调用)"""
+                enrich_events.append({
+                    "percent": int(percent),
+                    "message": str(message or ""),
+                    "stage": "enrich",
+                })
+
+            try:
+                trip_plan = enrich_plan(trip_plan, request, self.amap,
+                                        progress=collect_progress)
+            except Exception as e:
+                print(f"⚠️  行程充实失败,返回原始计划: {str(e)}")
+            for event in enrich_events:
+                yield ("progress", event)
+
+            # 充实后依然没有景点 → 用备用方案再充实一次
+            # (这一次不再向上报进度,避免百分比回退)
+            if not plan_has_attractions(trip_plan):
+                print("⚠️  充实后仍无可用景点,使用备用方案重新生成")
+                trip_plan = self._enrich(self._create_fallback_plan(request), request)
+
+            print(f"{'='*60}")
+            print(f"✅ 旅行计划生成完成!")
+            print(f"{'='*60}\n")
+
+            # 96/100 必须由本方法在 enrich_plan 返回后发出,保证最后一个进度是 100
+            yield ("progress", {"percent": 96, "message": "正在收尾攻略…", "stage": "enrich"})
+            yield ("progress", {"percent": 100, "message": "攻略已经准备好啦!", "stage": "done"})
+            yield ("result", trip_plan)
+
+        except Exception as e:
+            print(f"❌ 生成旅行计划失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            try:
+                fallback = self._enrich(self._create_fallback_plan(request), request)
+            except Exception:
+                fallback = self._create_fallback_plan(request)
+            yield ("result", fallback)
+
     def plan_trip(self, request: TripRequest) -> TripPlan:
         """
         使用多智能体协作生成旅行计划
@@ -231,53 +347,34 @@ class MultiAgentTripPlanner:
             旅行计划
         """
         try:
-            print(f"\n{'='*60}")
-            print(f"🚀 开始多智能体协作规划旅行...")
-            print(f"目的地: {request.city}")
-            print(f"日期: {request.start_date} 至 {request.end_date}")
-            print(f"天数: {request.travel_days}天")
-            print(f"偏好: {', '.join(request.preferences) if request.preferences else '无'}")
-            print(f"{'='*60}\n")
-
-            # 步骤1: 景点搜索Agent搜索景点
-            print("📍 步骤1: 搜索景点...")
-            attraction_query = self._build_attraction_query(request)
-            attraction_response = self.attraction_agent.run(attraction_query)
-            print(f"景点搜索结果: {attraction_response[:200]}...\n")
-
-            # 步骤2: 天气查询Agent查询天气
-            print("🌤️  步骤2: 查询天气...")
-            weather_query = f"请查询{request.city}的天气信息"
-            weather_response = self.weather_agent.run(weather_query)
-            print(f"天气查询结果: {weather_response[:200]}...\n")
-
-            # 步骤3: 酒店推荐Agent搜索酒店
-            print("🏨 步骤3: 搜索酒店...")
-            hotel_query = f"请搜索{request.city}的{request.accommodation}酒店"
-            hotel_response = self.hotel_agent.run(hotel_query)
-            print(f"酒店搜索结果: {hotel_response[:200]}...\n")
-
-            # 步骤4: 行程规划Agent整合信息生成计划
-            print("📋 步骤4: 生成行程计划...")
-            planner_query = self._build_planner_query(request, attraction_response, weather_response, hotel_response)
-            planner_response = self.planner_agent.run(planner_query)
-            print(f"行程规划结果: {planner_response[:300]}...\n")
-
-            # 解析最终计划
-            trip_plan = self._parse_response(planner_response, request)
-
-            print(f"{'='*60}")
-            print(f"✅ 旅行计划生成完成!")
-            print(f"{'='*60}\n")
-
-            return trip_plan
-
+            result: TripPlan = self._create_fallback_plan(request)
+            for event, payload in self.plan_trip_stream(request):
+                if event == "result" and isinstance(payload, TripPlan):
+                    result = payload
+            return result
         except Exception as e:
             print(f"❌ 生成旅行计划失败: {str(e)}")
             import traceback
             traceback.print_exc()
             return self._create_fallback_plan(request)
-    
+
+    def _enrich(self, plan: TripPlan, request: TripRequest) -> TripPlan:
+        """
+        用高德真实数据充实行程(时间轴、交通、餐厅、酒店、预算)
+
+        Args:
+            plan: LLM 生成的原始计划
+            request: 旅行请求
+
+        Returns:
+            充实后的计划;失败时返回原计划
+        """
+        try:
+            return enrich_plan(plan, request, self.amap)
+        except Exception as e:
+            print(f"⚠️  行程充实失败,返回原始计划: {str(e)}")
+            return plan
+
     def _build_attraction_query(self, request: TripRequest) -> str:
         """构建景点搜索查询 - 直接包含工具调用"""
         keywords = []
@@ -293,13 +390,20 @@ class MultiAgentTripPlanner:
 
     def _build_planner_query(self, request: TripRequest, attractions: str, weather: str, hotels: str = "") -> str:
         """构建行程规划查询"""
+        arrival_time = getattr(request, "arrival_time", "09:00") or "09:00"
+        travelers = getattr(request, "travelers", 2) or 2
+        transport_preferences = getattr(request, "transport_preferences", []) or []
+
         query = f"""请根据以下信息生成{request.city}的{request.travel_days}天旅行计划:
 
 **基本信息:**
 - 城市: {request.city}
 - 日期: {request.start_date} 至 {request.end_date}
 - 天数: {request.travel_days}天
-- 交通方式: {request.transportation}
+- 抵达时间: {arrival_time}(第一天请从该时刻之后开始安排行程)
+- 出行人数: {travelers}人(景点、餐饮、酒店的推荐请与人数匹配)
+- 出行方式: {request.transportation}
+- 交通偏好: {', '.join(transport_preferences) if transport_preferences else '不限'}
 - 住宿: {request.accommodation}
 - 偏好: {', '.join(request.preferences) if request.preferences else '无'}
 
@@ -316,9 +420,11 @@ class MultiAgentTripPlanner:
 1. 每天安排2-3个景点
 2. 每天必须包含早中晚三餐
 3. 每天推荐一个具体的酒店(从酒店信息中选择)
-3. 考虑景点之间的距离和交通方式
-4. 返回完整的JSON格式数据
-5. 景点的经纬度坐标要真实准确
+4. 考虑景点之间的距离和交通方式
+5. 第一天不要安排早于抵达时间{arrival_time}的活动
+6. 交通与住宿安排要照顾到{travelers}人的出行人数
+7. 返回完整的JSON格式数据
+8. 景点的经纬度坐标要真实准确,并给出真实评分(rating)
 """
         if request.free_text_input:
             query += f"\n**额外要求:** {request.free_text_input}"
