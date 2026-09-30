@@ -1,0 +1,28 @@
+# 保活工作流：每 5 分钟 ping 一次线上服务，防止秒悟平台回收空闲容器实例
+# 背景：实例空闲约 10 分钟会被回收，冷启动耗时超过平台网关 30 秒限制，
+#      导致闲置后首次访问 504 超时。定时 ping 让实例常驻温热。
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # 每 5 分钟（GitHub 可能有几分钟调度延迟，属正常）
+  workflow_dispatch:          # 支持在 Actions 页面手动触发
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://wv1a16omj0cx.meoo.run/health)
+            echo "第 $i 次探测: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "实例在线，保活成功"
+              exit 0
+            fi
+            # 遇到 504（冷启动中）等待后重试，直到实例就绪
+            sleep 30
+          done
+          echo "连续 5 次未探测成功，但探测请求本身已触发实例启动"
+          exit 0   # 不标记失败，避免邮件骚扰；下一轮会继续保活
